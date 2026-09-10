@@ -4,7 +4,7 @@ import javax.persistence.*;
 
 @Entity
 @Table(name = "record", indexes = {
-        @Index(name = "idx_record_appid", columnList = "appId,success"),
+        @Index(name = "idx_record_userid", columnList = "userId,success"),
         @Index(name = "idx_record_url", columnList = "url")
 })
 public class Record {
@@ -12,8 +12,9 @@ public class Record {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public int id;
 
+    // 发起请求的 IM 用户 ID，关闭鉴权时为空
     @Column(length = 64)
-    public String appId;
+    public String userId;
 
     @Column
     public int success;

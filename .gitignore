@@ -12,6 +12,8 @@
 
 # Package Files #
 *.jar
+# 野火 IM 服务端 SDK
+!src/lib/*.jar
 *.war
 *.nar
 *.ear

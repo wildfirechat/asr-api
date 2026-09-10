@@ -2,12 +2,9 @@ package cn.wildfirechat.asr.service;
 
 import cn.wildfirechat.asr.jpa.User;
 import cn.wildfirechat.asr.jpa.UserRepository;
-import cn.wildfirechat.asr.jpa.Application;
-import cn.wildfirechat.asr.jpa.ApplicationRepository;
 import cn.wildfirechat.asr.utilis.AdminResult;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.http.util.TextUtils;
 import org.apache.shiro.SecurityUtils;
 import org.apache.shiro.authc.*;
 import org.apache.shiro.subject.Subject;
@@ -18,10 +15,7 @@ import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import static cn.wildfirechat.asr.utilis.AdminResult.AdminCode.*;
 
@@ -29,10 +23,6 @@ import static cn.wildfirechat.asr.utilis.AdminResult.AdminCode.*;
 @Service
 public class AdminService {
     private static final Logger LOG = LoggerFactory.getLogger(AdminService.class);
-
-    @Autowired
-    ApplicationRepository applicationRepository;
-
 
     @Autowired
     private UserRepository userRepository;
@@ -106,47 +96,5 @@ public class AdminService {
             return AdminResult.ok(subject.getPrincipal());
         }
         return AdminResult.error(ERROR_NOT_EXIST);
-    }
-
-
-    public Object createApplication(Application application) throws Exception {
-        if(!TextUtils.isEmpty(application.appId)) {
-            Optional<Application> optionalApp = applicationRepository.findById(application.appId);
-            if (optionalApp.isPresent()) {
-                return AdminResult.error(ERROR_ALREADY_EXIST);
-            }
-        } else {
-            application.appId = UUID.randomUUID().toString();
-        }
-
-        applicationRepository.save(application);
-        return AdminResult.ok(application.appId);
-    }
-
-    public Object updateApplication(Application application) throws Exception {
-        if(TextUtils.isEmpty(application.appId)) {
-            return AdminResult.error(ERROR_MISS_PARAMETER);
-        }
-        applicationRepository.save(application);
-        return AdminResult.ok();
-    }
-
-    public Object deleteApplication(String appId) throws Exception {
-        applicationRepository.deleteById(appId);
-        return AdminResult.ok();
-    }
-
-    public Object getApplication(String appId) {
-        Optional<Application> optionalApp = applicationRepository.findById(appId);
-        return optionalApp.map(AdminResult::ok).orElseGet(() -> AdminResult.error(ERROR_NOT_EXIST));
-    }
-
-    public Object listApplication() {
-        Iterable<Application> iterable = applicationRepository.findAll();
-        List<Application> list = new ArrayList<>();
-        for (Application application : iterable) {
-            list.add(application);
-        }
-        return AdminResult.ok(list);
     }
 }

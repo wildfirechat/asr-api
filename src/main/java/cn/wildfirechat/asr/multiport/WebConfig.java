@@ -1,6 +1,6 @@
 package cn.wildfirechat.asr.multiport;
 
-import cn.wildfirechat.asr.jpa.ApplicationRepository;
+import cn.wildfirechat.asr.service.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -17,16 +17,16 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${server.adminPathPrefix}")
     private String adminPathPrefix;
 
-    @Value("${server.need_signature}")
-    private boolean needSignature;
+    @Value("${server.need_auth}")
+    private boolean needAuth;
 
 
     @Autowired
-    ApplicationRepository applicationRepository;
+    AuthService authService;
 
     @Bean
     public FilterRegistrationBean<InternalEndpointsFilter> trustedEndpointsFilter() {
-        return new FilterRegistrationBean<>(new InternalEndpointsFilter(adminPort, adminPathPrefix, applicationRepository, needSignature));
+        return new FilterRegistrationBean<>(new InternalEndpointsFilter(adminPort, adminPathPrefix, authService, needAuth));
     }
 
     @Override

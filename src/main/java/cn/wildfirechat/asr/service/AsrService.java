@@ -122,11 +122,11 @@ public class AsrService {
         }
     }
 
-    public ResponseBodyEmitter onRecognize(String url, boolean noLlm, boolean noReuse, String appId) {
+    public ResponseBodyEmitter onRecognize(String url, boolean noLlm, boolean noReuse, String userId) {
         ResponseBodyEmitter emitter = new SseEmitter();
         String requestId = UUID.randomUUID().toString().replace("-", "");
         long requestReceivedTime = System.currentTimeMillis();
-        LOG.info("[{}] request received, url={}, noLlm={}, noReuse={}, appId={}", requestId, url, noLlm, noReuse, appId);
+        LOG.info("[{}] request received, url={}, noLlm={}, noReuse={}, userId={}", requestId, url, noLlm, noReuse, userId);
 
         CompletableFuture.runAsync(() -> {
             if (reuseHistory && !noReuse) {
@@ -151,7 +151,7 @@ public class AsrService {
             Record record = new Record();
             record.receiveTimestamp = requestReceivedTime;
             record.url = url;
-            record.appId = appId;
+            record.userId = userId;
             try {
                 savePath = tempDir + "/tempfiles" + UUID.randomUUID(); // 保存到本地的路径
                 copyURLToFile(new URL(url), new File(savePath));

@@ -1,5 +1,6 @@
 package cn.wildfirechat.asr.controller;
 
+import cn.wildfirechat.asr.multiport.InternalEndpointsFilter;
 import cn.wildfirechat.asr.pojo.PojoRecognizeReq;
 import cn.wildfirechat.asr.service.AsrService;
 import org.slf4j.Logger;
@@ -25,6 +26,6 @@ public class AsrController {
 
     @PostMapping(value = "/recognize", produces = "application/json;charset=UTF-8")
     public Object recognize(HttpServletRequest request, @RequestBody PojoRecognizeReq req) {
-        return asrService.onRecognize(req.url, req.noLlm, req.noReuse, (String)request.getAttribute("app_id"));
+        return asrService.onRecognize(req.url, req.noLlm, req.noReuse, (String)request.getAttribute(InternalEndpointsFilter.ATTR_USER_ID));
     }
 }
