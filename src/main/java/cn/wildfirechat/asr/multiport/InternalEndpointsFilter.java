@@ -63,11 +63,18 @@ public class InternalEndpointsFilter implements Filter {
             boolean isPreflight = "OPTIONS".equals(request.getMethod());
             if(needAuth && isExternalAPI && !isExternalHello && !isPreflight) {
                 // 客户端接口（包括 WebSocket 握手请求）都需要带上认证码
+                long authStartTime = System.currentTimeMillis();
                 String userId = authService.verifyAuthCode(request.getHeader(HEADER_AUTH_CODE));
+                long authDuration = System.currentTimeMillis() - authStartTime;
                 if (userId == null) {
                     LOG.error("request {} miss authCode header or authCode is invalid", uri);
                     writeResponse(response, HttpStatus.UNAUTHORIZED, UNAUTHORIZED);
                     return;
+                }
+                if (authDuration > 100) {
+                    LOG.warn("verify authCode for {} took {}ms, userId={}", uri, authDuration, userId);
+                } else {
+                    LOG.info("verify authCode for {} took {}ms, userId={}", uri, authDuration, userId);
                 }
                 request.setAttribute(ATTR_USER_ID, userId);
             }

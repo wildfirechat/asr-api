@@ -159,16 +159,20 @@ public class AsrStreamHandler extends AbstractWebSocketHandler {
                 closeQuietly(session, CloseStatus.NORMAL);
                 return;
             }
-            LOG.info("[{}] asr server connected", clientId);
+            LOG.info("[{}] asr server connected in {}ms", clientId, System.currentTimeMillis() - startTime);
             upstream = new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, SEND_BUFFER_LIMIT_BYTES);
             if (!sendUpstream(new TextMessage(clientId))) {
                 return;
             }
+            int pendingCount = pending.size();
             WebSocketMessage<?> message;
             while ((message = pending.poll()) != null) {
                 if (!sendUpstream(message)) {
                     return;
                 }
+            }
+            if (pendingCount > 0) {
+                LOG.info("[{}] flushed {} pending messages buffered before asr server connected", clientId, pendingCount);
             }
             pendingBytes = 0;
         }
@@ -180,8 +184,10 @@ public class AsrStreamHandler extends AbstractWebSocketHandler {
             if (!clientIdReceived) {
                 // 客户端的第一条文本消息是 clientId，不转发
                 clientIdReceived = true;
+                LOG.info("[{}] first text message (clientId) not forwarded: {}", clientId, text);
                 return;
             }
+            LOG.info("[{}] client command at +{}ms: {}", clientId, System.currentTimeMillis() - startTime, text);
             forward(new TextMessage(text));
         }
 
@@ -235,11 +241,23 @@ public class AsrStreamHandler extends AbstractWebSocketHandler {
             if (closed) {
                 return;
             }
+            long receiveTime = System.currentTimeMillis();
             try {
                 client.sendMessage(new TextMessage(text));
             } catch (Exception e) {
                 LOG.warn("[{}] send to client failed: {}", clientId, e.toString());
                 close(CloseStatus.SERVER_ERROR);
+                return;
+            }
+            long sendDuration = System.currentTimeMillis() - receiveTime;
+            String preview = text.length() > 80 ? text.substring(0, 80) + "..." : text;
+            if (sendDuration > 100) {
+                // 写客户端阻塞会反压上游读取，导致后续识别结果延迟
+                LOG.warn("[{}] result at +{}ms, send to client blocked {}ms: {}", clientId, receiveTime - startTime, sendDuration, preview);
+            } else if (text.startsWith("[PARTIAL]")) {
+                LOG.info("[{}] partial result at +{}ms: {}", clientId, receiveTime - startTime, preview);
+            } else {
+                LOG.info("[{}] result at +{}ms: {}", clientId, receiveTime - startTime, preview);
             }
         }
 
