@@ -5,6 +5,7 @@ import cn.wildfirechat.asr.jpa.RecordRepository;
 import cn.wildfirechat.asr.model.ChatCompletionRequest;
 import cn.wildfirechat.asr.model.ChatCompletionStreamResponse;
 import cn.wildfirechat.asr.model.ChatMessage;
+import cn.wildfirechat.asr.utilis.AudioUrlValidator;
 
 import java.util.Arrays;
 import com.google.gson.Gson;
@@ -29,6 +30,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -44,10 +46,17 @@ import java.util.concurrent.TimeUnit;
 public class AsrService {
     private static final Logger LOG = LoggerFactory.getLogger(AsrService.class);
 
+    private static final int MAX_DOWNLOAD_REDIRECTS = 3;
+    private static final int DOWNLOAD_CONNECT_TIMEOUT_MS = 5000;
+    private static final int DOWNLOAD_READ_TIMEOUT_MS = 30000;
+
     private String tempDir;
 
     @Autowired
     private RecordRepository mRecordRepository;
+
+    @Autowired
+    private AudioUrlValidator audioUrlValidator;
 
     @Value("${asr.max_audio_file_size}")
     private long maxAudioFileSize;
@@ -129,8 +138,11 @@ public class AsrService {
         LOG.info("[{}] request received, url={}, noLlm={}, noReuse={}, userId={}", requestId, url, noLlm, noReuse, userId);
 
         CompletableFuture.runAsync(() -> {
-            if (reuseHistory && !noReuse) {
-                List<Record> existRecord = mRecordRepository.findByUrl(url);
+            // 历史结果按“用户 + url”复用。不能只按 url 查：否则知道录音地址的人可以读到别人的转写文本，
+            // 也可以先用自己的请求把某个 url 的文本写成任意内容，再让受害者拿到被篡改的结果。
+            // 关闭鉴权时 userId 为空，此时不复用历史，避免所有匿名请求互相串数据。
+            if (reuseHistory && !noReuse && StringUtils.hasText(userId)) {
+                List<Record> existRecord = mRecordRepository.findByUrlAndUserId(url, userId);
                 if (existRecord != null && !existRecord.isEmpty()) {
                     for (Record record : existRecord) {
                         if (StringUtils.hasText(record.text)) {
@@ -342,20 +354,48 @@ public class AsrService {
     }
 
     public long copyURLToFile(URL source, File destination) throws IOException {
-        try (InputStream input = source.openStream();
-             OutputStream output = openOutputStream(destination, false)) {
-            byte[] buffer = new byte[8192];
-            long count;
-            int n;
-            for (count = 0L; -1 != (n = input.read(buffer)); count += (long) n) {
-                output.write(buffer, 0, n);
-                if (count > maxAudioFileSize) {
-                    throw new IOException("File too large!");
+        // 只允许 http/https，并拒绝内网/回环/链路本地/云元数据地址，避免客户端传入 file:// 或内网 URL 造成
+        // 任意文件读取和 SSRF。重定向逐跳重新校验，防止公网地址 302 到内网。
+        URL current = audioUrlValidator.validate(source);
+        for (int redirect = 0; redirect <= MAX_DOWNLOAD_REDIRECTS; redirect++) {
+            HttpURLConnection connection = (HttpURLConnection) current.openConnection();
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MS);
+            connection.setRequestProperty("User-Agent", "asr-api");
+            try {
+                int statusCode = connection.getResponseCode();
+                if (statusCode >= 300 && statusCode < 400) {
+                    String location = connection.getHeaderField("Location");
+                    if (!StringUtils.hasText(location)) {
+                        throw new IOException("download redirect without location");
+                    }
+                    current = audioUrlValidator.validate(new URL(current, location));
+                    continue;
                 }
+                if (statusCode < 200 || statusCode >= 300) {
+                    throw new IOException("download failed, HTTP " + statusCode);
+                }
+                try (InputStream input = connection.getInputStream();
+                     OutputStream output = openOutputStream(destination, false)) {
+                    byte[] buffer = new byte[8192];
+                    long count = 0L;
+                    int n;
+                    while (-1 != (n = input.read(buffer))) {
+                        count += n;
+                        if (count > maxAudioFileSize) {
+                            throw new IOException("File too large!");
+                        }
+                        output.write(buffer, 0, n);
+                    }
+                    output.flush();
+                    return count;
+                }
+            } finally {
+                connection.disconnect();
             }
-            output.flush();
-            return count;
         }
+        throw new IOException("too many download redirects");
     }
 
     private void deleteTempFile(String savePath) {

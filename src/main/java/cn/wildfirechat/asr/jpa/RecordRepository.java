@@ -6,4 +6,6 @@ import java.util.List;
 
 public interface RecordRepository extends CrudRepository<Record, Integer> {
     List<Record> findByUrl(String url);
+
+    List<Record> findByUrlAndUserId(String url, String userId);
 }
